@@ -18,7 +18,7 @@ const Grid = () => {
     const interval = setInterval(() => {
       updateGrid();
     }, 200); 
-
+    
     return () => clearInterval(interval);
   }, [position, inputText]);
 
