@@ -6,15 +6,14 @@ const Grid2 = () => {
     const [slices, setSlices] = useState([]);
     const [phase, setPhase] = useState('falling'); // 'falling', 'stacking', 'movingDown'
     const delayCounter = useRef(0);
-    const nextSliceIndex = useRef(1);
+    const nextSliceIndex = useRef(0);
 
     const gridHeight = 15;                       // Increased grid height to accommodate all slices
     const gridWidth = 44;                        // Number of columns in the grid
     const speed = 1;                             // Speed of slice movement
-    const delayBetweenSlices = 10;               // Delay between slices in frames
+    const delayBetweenSlices = 5;                // Delay between slices in frames (adjusted for better spacing)
     const stackingRow = 8;                       // Row index where first slice stops
 
-    // ... (generateSlices function remains the same)
     // Utility function to generate horizontal slices from the input text
     const generateSlices = (inputText) => {
         const slices = [];
@@ -76,7 +75,7 @@ const Grid2 = () => {
         setSlices(newSlices);
         nextSliceIndex.current = 1;
         delayCounter.current = 0;
-        setPhase('falling');
+        setPhase('stacking'); // Start directly with stacking phase
     }, [inputText]);
 
     // Animation loop
@@ -85,47 +84,30 @@ const Grid2 = () => {
             setSlices(prevSlices => {
                 const updatedSlices = [...prevSlices];
 
-                if (phase === 'falling') {
-                    // Falling phase for the first slice
-                    const firstSlice = updatedSlices[0];
-                    if (firstSlice.active) {
-                        let newYPos = firstSlice.yPos + speed;
-                        let collision = false;
-
-                        if (newYPos >= stackingRow) {
-                            newYPos = stackingRow;
-                            collision = true;
-                        }
-
-                        updatedSlices[0] = {
-                            ...firstSlice,
-                            yPos: newYPos,
-                            active: !collision,
-                        };
-
-                        if (collision) {
-                            // Transition to stacking phase
-                            setPhase('stacking');
-                            nextSliceIndex.current = 1; // Start stacking from the second slice
-                            delayCounter.current = 0;
-                        }
-                    }
-                } else if (phase === 'stacking') {
-                    // Stacking phase for remaining slices
+                if (phase === 'stacking') {
+                    // Stacking phase for all slices
                     let allStopped = true;
 
                     // Update positions of active slices
-                    for (let i = 1; i < updatedSlices.length; i++) {
+                    for (let i = 0; i < updatedSlices.length; i++) {
                         const slice = updatedSlices[i];
                         if (slice.active) {
                             let newYPos = slice.yPos + speed;
                             let collision = false;
 
-                            // Check collision with previous slice
-                            const prevSlice = updatedSlices[i - 1];
-                            if (newYPos >= prevSlice.yPos - 1) {
-                                newYPos = prevSlice.yPos - 1;
-                                collision = true;
+                            if (i === 0) {
+                                // First slice, check collision with stackingRow
+                                if (newYPos >= stackingRow) {
+                                    newYPos = stackingRow;
+                                    collision = true;
+                                }
+                            } else {
+                                // Other slices, check collision with previous slice
+                                const prevSlice = updatedSlices[i - 1];
+                                if (newYPos >= prevSlice.yPos - 1) {
+                                    newYPos = prevSlice.yPos - 1;
+                                    collision = true;
+                                }
                             }
 
                             updatedSlices[i] = {
@@ -134,7 +116,9 @@ const Grid2 = () => {
                                 active: !collision,
                             };
 
-                            if (!collision) {
+                            if (collision) {
+                                // Slice has stopped
+                            } else {
                                 allStopped = false;
                             }
                         }
@@ -152,39 +136,56 @@ const Grid2 = () => {
                         delayCounter.current += 1;
                     }
 
-                    // Check if all slices have stopped
-                    if (allStopped && nextSliceIndex.current >= updatedSlices.length) {
-                        // Transition to moving down phase
+                    // Check if all slices have been activated and have stopped moving
+                    const allSlicesActivated = nextSliceIndex.current >= updatedSlices.length;
+                    const allSlicesStopped = updatedSlices.every(slice => !slice.active);
+                    if (allSlicesActivated && allSlicesStopped) {
+                        // Transition to movingDown phase
+                        // Reset activation and delayCounter for moving down phase
                         for (let i = 0; i < updatedSlices.length; i++) {
-                            updatedSlices[i].active = true;
+                            updatedSlices[i].active = false;
                         }
+                        nextSliceIndex.current = 0;
+                        delayCounter.current = 0;
                         setPhase('movingDown');
                     }
                 } else if (phase === 'movingDown') {
                     // Moving down phase
-                    let stackExited = false;
+                    let allExited = true;
 
-                    // Move all slices down together
+                    // Update positions of active slices
                     for (let i = 0; i < updatedSlices.length; i++) {
                         const slice = updatedSlices[i];
-
                         if (slice.active) {
                             let newYPos = slice.yPos + speed;
                             updatedSlices[i] = {
                                 ...slice,
                                 yPos: newYPos,
                             };
+
+                            // Check if slice has exited the grid
+                            if (newYPos >= gridHeight) {
+                                updatedSlices[i].active = false;
+                            } else {
+                                allExited = false;
+                            }
                         }
                     }
 
-                    // Check if the bottom slice has exited the grid
-                    const bottomSlice = updatedSlices[updatedSlices.length - 1];
-                    if (bottomSlice.yPos >= gridHeight) {
-                        stackExited = true;
+                    // Handle activation of next slice
+                    if (delayCounter.current >= delayBetweenSlices) {
+                        if (nextSliceIndex.current < updatedSlices.length) {
+                            updatedSlices[nextSliceIndex.current].active = true;
+                            // Slices start moving down from their stacked positions
+                            nextSliceIndex.current += 1;
+                            delayCounter.current = 0;
+                        }
+                    } else {
+                        delayCounter.current += 1;
                     }
 
-                    // If the stack has exited, reset for next 'falling' phase
-                    if (stackExited) {
+                    // If all slices have exited, reset for next 'stacking' phase
+                    if (allExited) {
                         const resetSlices = generateSlices(inputText);
                         if (resetSlices.length > 0) {
                             resetSlices[0].active = true;
@@ -192,7 +193,7 @@ const Grid2 = () => {
                         }
                         nextSliceIndex.current = 1;
                         delayCounter.current = 0;
-                        setPhase('falling');
+                        setPhase('stacking'); // Start over with stacking phase
                         return resetSlices;
                     }
                 }
