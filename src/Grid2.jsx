@@ -7,6 +7,7 @@ const Grid2 = () => {
     const [phase, setPhase] = useState('stacking'); // Start with 'stacking' phase
     const delayCounter = useRef(0);
     const nextSliceIndex = useRef(0);
+    const waitingCounter = useRef(0); // Counter for the waiting phase
 
     const gridHeight = 15;                       // Grid height
     const gridWidth = 44;                        // Grid width
@@ -75,6 +76,7 @@ const Grid2 = () => {
         setSlices(newSlices);
         nextSliceIndex.current = 1;
         delayCounter.current = 0;
+        waitingCounter.current = 0;
         setPhase('stacking'); // Start with stacking phase
     }, [inputText]);
 
@@ -138,15 +140,31 @@ const Grid2 = () => {
                     const allSlicesActivated = nextSliceIndex.current >= updatedSlices.length;
                     const allSlicesStopped = updatedSlices.every(slice => !slice.active);
                     if (allSlicesActivated && allSlicesStopped) {
-                        // Transition to movingDown phase
+                        // Transition to waiting phase
+                        // Reset activation and counters
+                        for (let i = 0; i < updatedSlices.length; i++) {
+                            updatedSlices[i].active = false;
+                        }
+                        nextSliceIndex.current = 0;
+                        delayCounter.current = 0;
+                        waitingCounter.current = 0; // Initialize waiting counter
+                        setPhase('waiting');
+                    }
+                } else if (phase === 'waiting') {
+                    // Waiting phase: wait for 2 seconds before moving down
+                    waitingCounter.current += 1;
+
+                    if (waitingCounter.current * 100 >= 2000) { // Since interval is 100 ms
+                        // After 2 seconds, transition to movingDown phase
+                        setPhase('movingDown');
                         // Reset activation and delayCounter for moving down phase
                         for (let i = 0; i < updatedSlices.length; i++) {
                             updatedSlices[i].active = false;
                         }
                         nextSliceIndex.current = 0;
                         delayCounter.current = 0;
-                        setPhase('movingDown');
                     }
+                    // Return updatedSlices without changes
                 } else if (phase === 'movingDown') {
                     // Moving down phase
                     let allExited = true;
@@ -191,6 +209,7 @@ const Grid2 = () => {
                         }
                         nextSliceIndex.current = 1;
                         delayCounter.current = 0;
+                        waitingCounter.current = 0;
                         setPhase('stacking'); // Start over with stacking phase
                         return resetSlices;
                     }
