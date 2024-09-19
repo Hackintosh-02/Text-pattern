@@ -4,23 +4,34 @@ import { letterPatterns } from './letterPattern.js';
 const Grid2 = () => {
     const [inputText, setInputText] = useState("LED");
     const [slices, setSlices] = useState([]);
-    const [phase, setPhase] = useState('falling'); // 'falling' or 'exiting'
+    const [phase, setPhase] = useState('falling'); // 'falling', 'stacking', 'movingDown'
     const delayCounter = useRef(0);
     const nextSliceIndex = useRef(1);
 
-    const gridHeight = 20;                       // Number of rows in the grid
-    const gridWidth = inputText.length * 5;      // Total number of columns (5 pixels per letter)
-    const speed = 1;                             // Speed of falling slices
+    const gridHeight = 15;                       // Increased grid height to accommodate all slices
+    const gridWidth = 44;                        // Number of columns in the grid
+    const speed = 1;                             // Speed of slice movement
     const delayBetweenSlices = 10;               // Delay between slices in frames
+    const stackingRow = 8;                       // Row index where first slice stops
 
+    // ... (generateSlices function remains the same)
     // Utility function to generate horizontal slices from the input text
     const generateSlices = (inputText) => {
         const slices = [];
 
+        // Calculate total text width
+        const textWidth = inputText.length * 5 + (inputText.length - 1) * 1; // Add 1 column spacing between letters
+
+        // Calculate starting column to center the text
+        const startCol = Math.floor((gridWidth - textWidth) / 2);
+
         // For each row in the LED pattern (there are 7 rows)
         // We start from the bottom row and move up to the top row
         for (let row = 6; row >= 0; row--) {
-            let sliceData = [];
+            let sliceData = new Array(gridWidth).fill('0'); // Initialize with '0's
+
+            // Position within the sliceData
+            let colPosition = startCol;
 
             // For each character in the input text
             for (let charIndex = 0; charIndex < inputText.length; charIndex++) {
@@ -30,8 +41,17 @@ const Grid2 = () => {
                 // Get the row-th row of the pattern
                 const patternRow = pattern[row].split(''); // Convert string to array of '1's and '0's
 
-                // Append this row to the slice data
-                sliceData = sliceData.concat(patternRow);
+                // Copy patternRow into sliceData at the correct position
+                for (let i = 0; i < patternRow.length; i++) {
+                    sliceData[colPosition + i] = patternRow[i];
+                }
+
+                colPosition += 5; // Move past the character pattern
+
+                // Add spacing between letters, except after the last character
+                if (charIndex < inputText.length - 1) {
+                    colPosition += 1; // Add one column for spacing
+                }
             }
 
             // Each slice represents one horizontal row across all letters
@@ -48,6 +68,7 @@ const Grid2 = () => {
     // Initialize slices when inputText changes
     useEffect(() => {
         const newSlices = generateSlices(inputText);
+
         if (newSlices.length > 0) {
             newSlices[0].active = true;          // Start the first slice
             newSlices[0].yPos = -1;
@@ -65,29 +86,46 @@ const Grid2 = () => {
                 const updatedSlices = [...prevSlices];
 
                 if (phase === 'falling') {
-                    // Falling and stacking phase
+                    // Falling phase for the first slice
+                    const firstSlice = updatedSlices[0];
+                    if (firstSlice.active) {
+                        let newYPos = firstSlice.yPos + speed;
+                        let collision = false;
+
+                        if (newYPos >= stackingRow) {
+                            newYPos = stackingRow;
+                            collision = true;
+                        }
+
+                        updatedSlices[0] = {
+                            ...firstSlice,
+                            yPos: newYPos,
+                            active: !collision,
+                        };
+
+                        if (collision) {
+                            // Transition to stacking phase
+                            setPhase('stacking');
+                            nextSliceIndex.current = 1; // Start stacking from the second slice
+                            delayCounter.current = 0;
+                        }
+                    }
+                } else if (phase === 'stacking') {
+                    // Stacking phase for remaining slices
                     let allStopped = true;
 
                     // Update positions of active slices
-                    for (let i = 0; i < updatedSlices.length; i++) {
+                    for (let i = 1; i < updatedSlices.length; i++) {
                         const slice = updatedSlices[i];
                         if (slice.active) {
                             let newYPos = slice.yPos + speed;
                             let collision = false;
 
                             // Check collision with previous slice
-                            if (i > 0) {
-                                const prevSlice = updatedSlices[i - 1];
-                                if (newYPos >= prevSlice.yPos - 1) {
-                                    newYPos = prevSlice.yPos - 1;
-                                    collision = true;
-                                }
-                            } else {
-                                // Check collision with bottom of the grid
-                                if (newYPos >= gridHeight - 1) {
-                                    newYPos = gridHeight - 1;
-                                    collision = true;
-                                }
+                            const prevSlice = updatedSlices[i - 1];
+                            if (newYPos >= prevSlice.yPos - 1) {
+                                newYPos = prevSlice.yPos - 1;
+                                collision = true;
                             }
 
                             updatedSlices[i] = {
@@ -114,50 +152,39 @@ const Grid2 = () => {
                         delayCounter.current += 1;
                     }
 
-                    // If all slices have stopped, switch to 'exiting' phase
-                    if (allStopped && updatedSlices.length > 0) {
-                        nextSliceIndex.current = 0; // Start from first slice
-                        delayCounter.current = 0;
-                        setPhase('exiting');
+                    // Check if all slices have stopped
+                    if (allStopped && nextSliceIndex.current >= updatedSlices.length) {
+                        // Transition to moving down phase
+                        for (let i = 0; i < updatedSlices.length; i++) {
+                            updatedSlices[i].active = true;
+                        }
+                        setPhase('movingDown');
                     }
-                } else if (phase === 'exiting') {
-                    // Unstacking and exiting phase
-                    let allExited = true;
+                } else if (phase === 'movingDown') {
+                    // Moving down phase
+                    let stackExited = false;
 
-                    // Update positions of active slices
+                    // Move all slices down together
                     for (let i = 0; i < updatedSlices.length; i++) {
                         const slice = updatedSlices[i];
+
                         if (slice.active) {
                             let newYPos = slice.yPos + speed;
-
                             updatedSlices[i] = {
                                 ...slice,
                                 yPos: newYPos,
                             };
-
-                            // Check if slice has exited the grid
-                            if (newYPos >= gridHeight) {
-                                updatedSlices[i].active = false;
-                            } else {
-                                allExited = false;
-                            }
                         }
                     }
 
-                    // Handle activation of next slice
-                    if (delayCounter.current >= delayBetweenSlices) {
-                        if (nextSliceIndex.current < updatedSlices.length) {
-                            updatedSlices[nextSliceIndex.current].active = true;
-                            // Slices continue from current position
-                            nextSliceIndex.current += 1;
-                            delayCounter.current = 0;
-                        }
-                    } else {
-                        delayCounter.current += 1;
+                    // Check if the bottom slice has exited the grid
+                    const bottomSlice = updatedSlices[updatedSlices.length - 1];
+                    if (bottomSlice.yPos >= gridHeight) {
+                        stackExited = true;
                     }
 
-                    // If all slices have exited, reset for next 'falling' phase
-                    if (allExited) {
+                    // If the stack has exited, reset for next 'falling' phase
+                    if (stackExited) {
                         const resetSlices = generateSlices(inputText);
                         if (resetSlices.length > 0) {
                             resetSlices[0].active = true;
@@ -190,7 +217,7 @@ const Grid2 = () => {
                 // Check if any slice is at this grid position
                 for (let sliceIndex = 0; sliceIndex < slices.length; sliceIndex++) {
                     const slice = slices[sliceIndex];
-                    const sliceYPos = Math.round(slice.yPos);
+                    const sliceYPos = Math.floor(slice.yPos);
 
                     if (sliceYPos === rowIndex) {
                         const char = slice.data[colIndex];
@@ -204,7 +231,7 @@ const Grid2 = () => {
                 row.push(
                     <div
                         key={`${rowIndex}-${colIndex}`}
-                        className="grid-cell flex items-center justify-center w-4 h-4 border border-gray-700"
+                        className="grid-cell flex items-center justify-center w-6 h-6 border border-gray-700"
                         style={{ backgroundColor: cellColor }}
                     ></div>
                 );
@@ -219,7 +246,7 @@ const Grid2 = () => {
     };
 
     return (
-        <div className="flex flex-col items-center justify-center h-full bg-gray-900">
+        <div className="flex flex-col items-center justify-center h-full bg-gray-900 overflow-auto">
             <input
                 type="text"
                 value={inputText}
