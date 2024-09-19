@@ -4,15 +4,15 @@ import { letterPatterns } from './letterPattern.js';
 const Grid2 = () => {
     const [inputText, setInputText] = useState("LED");
     const [slices, setSlices] = useState([]);
-    const [phase, setPhase] = useState('falling'); // 'falling', 'stacking', 'movingDown'
+    const [phase, setPhase] = useState('stacking'); // Start with 'stacking' phase
     const delayCounter = useRef(0);
     const nextSliceIndex = useRef(0);
 
-    const gridHeight = 15;                       // Increased grid height to accommodate all slices
-    const gridWidth = 44;                        // Number of columns in the grid
+    const gridHeight = 15;                       // Grid height
+    const gridWidth = 44;                        // Grid width
     const speed = 1;                             // Speed of slice movement
-    const delayBetweenSlices = 5;                // Delay between slices in frames (adjusted for better spacing)
-    const stackingRow = 8;                       // Row index where first slice stops
+    const delayBetweenSlices = 5;                // Delay between slices in frames
+    const stackingRow = 8;                       // Row index where slices stack
 
     // Utility function to generate horizontal slices from the input text
     const generateSlices = (inputText) => {
@@ -75,7 +75,7 @@ const Grid2 = () => {
         setSlices(newSlices);
         nextSliceIndex.current = 1;
         delayCounter.current = 0;
-        setPhase('stacking'); // Start directly with stacking phase
+        setPhase('stacking'); // Start with stacking phase
     }, [inputText]);
 
     // Animation loop
@@ -116,9 +116,7 @@ const Grid2 = () => {
                                 active: !collision,
                             };
 
-                            if (collision) {
-                                // Slice has stopped
-                            } else {
+                            if (!collision) {
                                 allStopped = false;
                             }
                         }
@@ -153,6 +151,18 @@ const Grid2 = () => {
                     // Moving down phase
                     let allExited = true;
 
+                    // Handle activation of next slice
+                    if (nextSliceIndex.current < updatedSlices.length) {
+                        if (delayCounter.current >= delayBetweenSlices || nextSliceIndex.current === 0) {
+                            updatedSlices[nextSliceIndex.current].active = true;
+                            // The slice starts moving down from its current stacking position
+                            nextSliceIndex.current += 1;
+                            delayCounter.current = 0;
+                        } else {
+                            delayCounter.current += 1;
+                        }
+                    }
+
                     // Update positions of active slices
                     for (let i = 0; i < updatedSlices.length; i++) {
                         const slice = updatedSlices[i];
@@ -170,18 +180,6 @@ const Grid2 = () => {
                                 allExited = false;
                             }
                         }
-                    }
-
-                    // Handle activation of next slice
-                    if (delayCounter.current >= delayBetweenSlices) {
-                        if (nextSliceIndex.current < updatedSlices.length) {
-                            updatedSlices[nextSliceIndex.current].active = true;
-                            // Slices start moving down from their stacked positions
-                            nextSliceIndex.current += 1;
-                            delayCounter.current = 0;
-                        }
-                    } else {
-                        delayCounter.current += 1;
                     }
 
                     // If all slices have exited, reset for next 'stacking' phase
